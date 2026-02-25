@@ -1,6 +1,6 @@
 # AI Grant Screener for Non-Profits
 
-An AI-powered grant screening pipeline that **autonomously researches, reasons, and classifies** grant opportunities - then writes results live to Google Sheets with color-coded rows and clickable source links.
+An AI-powered grant screening pipeline that **autonomously researches, reasons, and classifies** grant opportunities - then writes results live to Google Sheets with color-coded rows and clickable source links along with rationale.
 
 Built for nonprofits that have dozens of grant foundations to evaluate and no time to research each one manually. The AI does the research and decision-making; you review the output and apply.
 
