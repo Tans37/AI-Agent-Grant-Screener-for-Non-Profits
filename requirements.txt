@@ -1,0 +1,8 @@
+mysql-connector-python
+python-dotenv
+google-genai
+google-search-results
+gspread
+pandas
+sqlalchemy
+tabulate
