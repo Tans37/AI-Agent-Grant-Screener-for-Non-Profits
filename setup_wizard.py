@@ -65,27 +65,42 @@ OUTPUT a valid JSON object with this exact structure:
     "max": 0
   }},
   "red_flags": [
-    "R1a. <hard disqualifier based on user input>",
+    "R1a. <hard disqualifier: not accepting / permanently closed>",
     "R1b. <soft flag: invitation-only>",
-    "R2. <another disqualifier>",
+    "R2. <another disqualifier from user input>",
     "..."
   ],
   "green_flags": [
-    "G1. <positive signal based on user input>",
+    "G1. <positive signal from user input>",
     "G2. <another positive signal>",
     "..."
   ],
   "green_threshold": 4,
+  "classification_rules": {{
+    "red": [
+      "R1a triggered (foundation closed/not accepting)",
+      "Any of R2+ triggered",
+      "<any extra RED conditions from user>"
+    ],
+    "yellow": [
+      "R1b triggered (invite-only) AND green_count >= 1 — worth reaching out",
+      "0 red flags AND green_count < threshold",
+      "<any user-defined YELLOW conditions>"
+    ],
+    "green": [
+      "0 red flags AND green_count >= threshold"
+    ]
+  }},
   "custom_context": "One sentence of additional context about this org's needs"
 }}
 
 Rules:
-- Always include R1a (not accepting / permanently closed → hard RED) and 
-  R1b (invitation only → soft flag) as the first two red flags.
-- Generate 4–8 additional red flags (R2–R8) from the user's answers.
-- Generate 6–10 green flags (G1–G10) from the user's answers.
-- green_threshold is typically 4 (GREEN if >= threshold, YELLOW if < threshold).
-- Infer grant_size min/max from user input; use 0 if not specified.
+- Always include R1a (closed/not accepting → hard RED) and R1b (invitation only → soft flag) as first two red flags.
+- Generate 4–8 red flags (R2+) from the user's disqualifiers.
+- Generate 6–10 green flags (G1+) from the user's positive signals.
+- Use the user's green_threshold_raw value for green_threshold (convert to int, default 4).
+- Use user's yellow_conditions to populate the yellow classification_rules list.
+- Use user's extra_red_raw to add extra entries to the red classification_rules list.
 - Output ONLY the JSON, no extra text.
 """
 
@@ -140,25 +155,45 @@ def run_wizard() -> dict:
         "  Describe in your own words — separate multiple with commas"
     )
 
-    section("4 / 4  —  Green Flags (Strong Positive Signals)")
+    section("4 / 5  —  Green Flags (Strong Positive Signals)")
     green_input = ask(
         "What makes a grant a great fit?\n"
         "  (e.g. 'mentions Girls Who Code or robotics', 'past grants in Newark', 'simple online application', 'active last 12 months')\n"
         "  Describe in your own words — separate multiple with commas"
     )
 
+    section("5 / 5  —  Classification Rules")
+    print("  You keep GREEN / YELLOW / RED as the three classes.")
+    print("  Now define what each should mean for your org:\n")
+    yellow_input = ask(
+        "What situations should be YELLOW instead of RED?\n"
+        "  (e.g. 'invite-only but aligns with our mission', 'low confidence result', 'deadline unknown')\n"
+        "  YELLOW means: worth a manual look or outreach"
+    )
+    red_input_extra = ask(
+        "Any extra conditions that should ALWAYS be RED?\n"
+        "  (beyond the disqualifiers you already listed — e.g. 'grant size under $1,000', 'no online application')\n"
+        "  Press Enter to skip"
+    )
+    green_threshold_input = ask(
+        "How many green flags should a grant need to be classified GREEN? (default: 4)", "4"
+    )
+
     return {
-        "org_name":     org_name,
-        "org_mission":  org_mission,
-        "org_state":    org_state,
-        "org_cities":   org_cities,
-        "grant_focus":  grant_focus,
-        "grant_min":    grant_min,
-        "grant_max":    grant_max,
-        "target_group": target_group,
-        "equity_focus": equity_focus,
-        "red_flags_raw":   red_input,
-        "green_flags_raw": green_input,
+        "org_name":            org_name,
+        "org_mission":         org_mission,
+        "org_state":           org_state,
+        "org_cities":          org_cities,
+        "grant_focus":         grant_focus,
+        "grant_min":           grant_min,
+        "grant_max":           grant_max,
+        "target_group":        target_group,
+        "equity_focus":        equity_focus,
+        "red_flags_raw":       red_input,
+        "green_flags_raw":     green_input,
+        "yellow_conditions":   yellow_input,
+        "extra_red_raw":       red_input_extra,
+        "green_threshold_raw": green_threshold_input,
     }
 
 

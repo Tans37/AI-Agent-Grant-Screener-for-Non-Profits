@@ -5,12 +5,13 @@ Update specific sections of your screener config without re-running the full wiz
 Run: python update_config.py
 
 Options:
-  --org        Re-configure organization details
-  --rules      Re-generate red/green flag rules
-  --size       Update grant size range
-  --threshold  Update the green flag threshold (how many = GREEN)
-  --show       Display current config
-  --full       Re-run the full setup wizard
+  --org            Re-configure organization details
+  --rules          Re-generate red/green flag rules
+  --classification Update RED / YELLOW / GREEN decision rules
+  --size           Update grant size range
+  --threshold      Update the green flag threshold (how many = GREEN)
+  --show           Display current config
+  --full           Re-run the full setup wizard
 """
 
 import os, sys, json, textwrap, argparse
@@ -80,6 +81,56 @@ def update_threshold(config: dict) -> dict:
     return config
 
 
+def update_classification_with_llm(config: dict) -> dict:
+    """Re-generate the RED / YELLOW / GREEN decision rules using Gemini."""
+    from google import genai
+    from google.genai import types
+
+    print("\n── Update Classification Rules ──")
+    print("  Describe what each class means for your org:\n")
+    red_extra   = ask("What should ALWAYS be RED (instant reject)?")
+    yellow_desc = ask("What should be YELLOW (worth reviewing or reaching out)?")
+    green_desc  = ask("What conditions make a grant GREEN (strong fit)?")
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    client  = genai.Client(api_key=api_key)
+
+    prompt = f"""
+You are a grant screening configuration builder.
+Update the classification rules for org: {config['org']['name']}.
+
+User input:
+- RED (instant reject): {red_extra}
+- YELLOW (needs review/outreach): {yellow_desc}
+- GREEN (strong fit): {green_desc}
+
+Always keep these core rules:
+- R1a triggered (permanently closed/not accepting) → RED
+- R1b triggered (invite-only) + at least 1 green flag → YELLOW
+- R1b triggered + zero green flags → RED
+
+Output ONLY valid JSON:
+{{
+  "classification_rules": {{
+    "red": ["<condition>", "..."],
+    "yellow": ["<condition>", "..."],
+    "green": ["<condition>", "..."]
+  }}
+}}
+"""
+
+    response = client.models.generate_content(
+        model="gemini-3-flash-preview",
+        contents=prompt,
+        config=types.GenerateContentConfig(temperature=0),
+    )
+
+    text = response.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+    updated = json.loads(text)
+    config["classification_rules"] = updated["classification_rules"]
+    return config
+
+
 def update_rules_with_llm(config: dict) -> dict:
     """Re-generate red/green flags using Gemini based on new freeform input."""
     from google import genai
@@ -133,12 +184,13 @@ Output ONLY valid JSON:
 
 def main():
     parser = argparse.ArgumentParser(description="Update your grant screener configuration.")
-    parser.add_argument("--org",       action="store_true", help="Update org details")
-    parser.add_argument("--rules",     action="store_true", help="Re-generate red/green flag rules")
-    parser.add_argument("--size",      action="store_true", help="Update grant size range")
-    parser.add_argument("--threshold", action="store_true", help="Update green flag threshold")
-    parser.add_argument("--show",      action="store_true", help="Show current config")
-    parser.add_argument("--full",      action="store_true", help="Re-run the full setup wizard")
+    parser.add_argument("--org",            action="store_true", help="Update org details")
+    parser.add_argument("--rules",          action="store_true", help="Re-generate red/green flag rules")
+    parser.add_argument("--classification", action="store_true", help="Update RED/YELLOW/GREEN decision rules")
+    parser.add_argument("--size",           action="store_true", help="Update grant size range")
+    parser.add_argument("--threshold",      action="store_true", help="Update green flag threshold")
+    parser.add_argument("--show",           action="store_true", help="Show current config")
+    parser.add_argument("--full",           action="store_true", help="Re-run the full setup wizard")
     args = parser.parse_args()
 
     if args.full:
@@ -160,6 +212,8 @@ def main():
         config = update_threshold(config)
     if args.rules:
         config = update_rules_with_llm(config)
+    if args.classification:
+        config = update_classification_with_llm(config)
 
     save_config(config)
     print("\nUpdated config:")

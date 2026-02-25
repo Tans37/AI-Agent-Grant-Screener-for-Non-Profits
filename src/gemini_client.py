@@ -68,6 +68,7 @@ class GeminiClient:
         size = cfg["grant_size"]
         threshold = cfg.get("green_threshold", 4)
         custom    = cfg.get("custom_context", "")
+        rules     = cfg.get("classification_rules", {})
 
         red_flags_text   = "\n        ".join(cfg["red_flags"])
         green_flags_text = "\n        ".join(cfg["green_flags"])
@@ -116,11 +117,19 @@ class GeminiClient:
         ══════════════════════════════════════════
         STEP 3 — CLASSIFY
         ══════════════════════════════════════════
-        Decision rule (strict):
-        • RED    → any hard red flag (R1a or R2+)
-        • YELLOW → R1b (invite-only) + green >= 1
-                   OR 0 red flags AND green_count < {threshold}
-        • GREEN  → 0 red flags AND green_count >= {threshold}
+        These are the EXACT classification rules for this org. Follow them strictly:
+
+        🔴 RED — Grant is disqualified. Do not pursue.
+        Conditions:
+        {chr(10).join("        - " + r for r in rules.get("red", ["R1a triggered", "Any of R2+ triggered"]))}
+
+        🟡 YELLOW — Needs manual review or follow-up. Do not auto-reject.
+        Conditions:
+        {chr(10).join("        - " + y for y in rules.get("yellow", ["R1b (invite-only) + green >= 1", "0 red flags AND green < threshold"]))}
+
+        🟢 GREEN — Strong fit. Apply.
+        Conditions:
+        {chr(10).join("        - " + g for g in rules.get("green", ["0 red flags AND green_count >= threshold"]))}
 
         Rationale must include:
         - Which R-flags triggered (or "None")
