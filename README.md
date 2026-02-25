@@ -1,47 +1,78 @@
 # AI Grant Screener for Non-Profits
 
-An intelligent, fully automated grant screening pipeline that uses **Gemini AI + SerpAPI** to research, classify, and export grant opportunities directly to Google Sheets - in real time, with color-coded rows and clickable source links.
+An AI-powered grant screening pipeline that **autonomously researches, reasons, and classifies** grant opportunities - then writes results live to Google Sheets with color-coded rows and clickable source links.
 
-Designed to save nonprofits hours of manual research by automatically screening dozens of grant foundations and telling you which ones are worth pursuing.
+Built for nonprofits that have dozens of grant foundations to evaluate and no time to research each one manually. The AI does the research and decision-making; you review the output and apply.
 
 ---
 
-## How It Works
+## How AI is Used
+
+This pipeline uses AI at **two distinct stages**:
+
+### Stage 1 - Setup (One Time)
+**Gemini generates your custom screening prompt from plain English.**
+
+You describe your org and grant criteria in natural language. The AI converts your description into a structured chain-of-thought reasoning framework - defining your red flags, green flags, and classification rules. This is called **meta-prompting**: using AI to build the prompt that AI will use later.
+
+```
+You: "We fund STEM education for low-income middle schoolers in NJ.
+      Disqualify: arts/environment only, outside NJ, inactive 3+ years.
+      Ideal: STEM mission, past NJ grants, equity focus, $5k-$50k range."
+
+Gemini builds:
+  R1a. Permanently closed or not accepting -> RED
+  R2.  Geographic restriction excludes NJ -> RED
+  R3.  Focus is Arts/Environment only -> RED
+  ...
+  G1.  Mission mentions STEM, coding, or robotics -> YES/NO
+  G3.  Past grants awarded in NJ -> YES/NO
+  G6.  Equity / low-income focus -> YES/NO
+  ...
+  GREEN if 4+ green flags, YELLOW if fewer, RED if any hard flag
+```
+
+You never write a prompt. AI does it from your description.
+
+### Stage 2 - Screening (Every Run)
+**Gemini researches each foundation and reasons step-by-step before classifying.**
+
+For every grant in your database, the pipeline:
+1. Searches **ProPublica, Granted, Candid, CauseIQ** via SerpAPI for real grant data
+2. Passes that evidence to **Gemini 3 Flash**, which also has **Google Search grounding** - meaning it can run its own live web searches during reasoning
+3. Gemini walks through every red flag and green flag explicitly (chain-of-thought), citing evidence before reaching a conclusion
+4. Outputs a classification (GREEN / YELLOW / RED), confidence score, and rationale
+5. Result is written live to Google Sheets with color and clickable source links
 
 ```
 MySQL/CRM Database
-       ↓  (fetch grant opportunities)
-SerpAPI Priority Search
-  → ProPublica (990 data)
-  → Granted AI
-  → Candid
-  → CauseIQ
-       ↓  (pre-fetched evidence)
-Gemini 3 Flash (+ Google Search grounding)
-  → 3-step chain-of-thought reasoning
-  → RED / YELLOW / GREEN classification
-       ↓
-Google Sheets (live, color-coded, clickable links)
-
-
-
+      | (fetch grant backlog)
+      v
+SerpAPI - ProPublica, Granted, Candid, CauseIQ
+      | (pre-fetched grant evidence)
+      v
+Gemini 3 Flash + Google Search grounding
+      | AI reasons: checks flags, counts evidence, decides
+      v
+Google Sheets (live rows, color-coded, clickable links)
 ```
+
 <img width="1919" height="443" alt="image" src="https://github.com/user-attachments/assets/f37b1251-a779-43ec-bba7-60d571670a1e" />
-Output(In Google Sheets) 
+
+*Google Sheets output - live, color-coded, with clickable source links*
 
 
 ## Features
 
-- **Priority source search** via SerpAPI - always checks ProPublica, Granted, Candid, and CauseIQ first
-- **Gemini AI reasoning** with Google Search grounding for additional evidence
-- **3-step chain-of-thought** classification (check red flags → count green flags → classify)
+- **AI-generated screening prompt** - setup wizard turns your plain-English description into a structured reasoning framework
+- **Live web research** - Gemini searches ProPublica, Granted, Candid, CauseIQ + its own Google Search during reasoning
+- **Chain-of-thought classification** - AI checks every flag explicitly before deciding, never guesses
+- **Fully user-defined rules** - red flags, green flags, and RED/YELLOW/GREEN conditions are all set by you, not hardcoded
 - **Live Google Sheets export** - rows written one by one as each grant is processed
-- **Color-coded rows** - 🟢 Green / 🟡 Yellow / 🔴 Red
-- **Clickable hyperlinks** in Sources column (up to 5 per grant)
-- **Skip logic** - skips grants already in the sheet (safe to re-run)
-- **CLI Setup Wizard** - describe your org in plain English, AI builds your screening prompt
-- **Update tool** - change specific rules without re-running the full wizard
-- **Fully configurable** - no hardcoded org details anywhere in the code
+- **Color-coded rows** - Green / Yellow / Red backgrounds
+- **Clickable source links** - up to 5 hyperlinked references per grant
+- **Skip logic** - re-run safely, skips already-processed grants
+- **Config update tool** - update any rule without re-running the full wizard
 
 ---
 
