@@ -1,98 +1,344 @@
-# AI Grant Screener
+# AI Grant Screener for Non-Profits
 
-An automated grant screening pipeline that uses **Gemini AI + SerpAPI** to research, classify, and export grant opportunities to Google Sheets in real time.
+An intelligent, fully automated grant screening pipeline that uses **Gemini AI + SerpAPI** to research, classify, and export grant opportunities directly to Google Sheets — in real time, with color-coded rows and clickable source links.
 
-## What it does
+Designed to save nonprofits hours of manual research by automatically screening dozens of grant foundations and telling you which ones are worth pursuing.
 
-- Pulls grant opportunities from a MySQL/CRM database
-- Searches **ProPublica**, **Granted**, **Candid**, and **CauseIQ** via SerpAPI for each foundation
-- Uses **Gemini 3 Flash** with Google Search grounding to classify each grant as:
-  - 🟢 **GREEN** — Strong match, apply
-  - 🟡 **YELLOW** — Needs review or follow-up
-  - 🔴 **RED** — Poor fit, skip
-- Writes results live to **Google Sheets** with:
-  - Color-coded rows
-  - Clickable hyperlinks in the Sources column
-  - Skip logic to avoid re-processing grants already in the sheet
+---
+
+## How It Works
+
+```
+MySQL/CRM Database
+       ↓  (fetch grant opportunities)
+SerpAPI Priority Search
+  → ProPublica (990 data)
+  → Granted AI
+  → Candid
+  → CauseIQ
+       ↓  (pre-fetched evidence)
+Gemini 3 Flash (+ Google Search grounding)
+  → 3-step chain-of-thought reasoning
+  → RED / YELLOW / GREEN classification
+       ↓
+Google Sheets (live, color-coded, clickable links)
+```
+
+---
+
+## Features
+
+- **Priority source search** via SerpAPI — always checks ProPublica, Granted, Candid, and CauseIQ first
+- **Gemini AI reasoning** with Google Search grounding for additional evidence
+- **3-step chain-of-thought** classification (check red flags → count green flags → classify)
+- **Live Google Sheets export** — rows written one by one as each grant is processed
+- **Color-coded rows** — 🟢 Green / 🟡 Yellow / 🔴 Red
+- **Clickable hyperlinks** in Sources column (up to 5 per grant)
+- **Skip logic** — skips grants already in the sheet (safe to re-run)
+- **CLI Setup Wizard** — describe your org in plain English, AI builds your screening prompt
+- **Update tool** — change specific rules without re-running the full wizard
+- **Fully configurable** — no hardcoded org details anywhere in the code
+
+---
 
 ## Classification Logic
 
-The model follows a strict 3-step chain-of-thought:
+The AI follows a strict 3-step reasoning chain for every grant:
 
-1. **Check Red Flags (R1a–R8)** — hard disqualifiers (closed, wrong geography, wrong focus, etc.)
-   - R1b exception: *invitation-only* foundations with ≥1 green flag → YELLOW (worth reaching out)
-2. **Count Green Flags (G1–G8)** — positive alignment signals (STEM, NJ funding, youth, equity, etc.)
-3. **Classify** — GREEN if ≥4 green flags, YELLOW if ≤3, RED if any hard flag triggered
+### Step 1 — Red Flags (instant disqualifiers)
+| Flag | Description | Result |
+|---|---|---|
+| R1a | "Not accepting applications" / "Permanently closed" | 🔴 RED (hard) |
+| R1b | "Invitation only" / "Preselected orgs only" | 🟡 YELLOW if green ≥ 1, else 🔴 RED |
+| R2–R8 | Geography block, wrong focus, wrong age group, inactive, etc. | 🔴 RED |
+
+### Step 2 — Green Flags (positive signals, counted)
+Examples: STEM mission, past NJ grantees, targets youth, equity focus, active within 12 months, right grant size, easy application, etc.
+
+> Green flags are **fully customizable** via the setup wizard — you define what counts as a good fit.
+
+### Step 3 — Final Classification
+| Condition | Result |
+|---|---|
+| Any hard red flag | 🔴 **RED** — skip |
+| R1b only + green ≥ 1 | 🟡 **YELLOW** — "Inquiry Required" |
+| 0 red flags, green ≥ threshold | 🟢 **GREEN** — apply |
+| 0 red flags, green < threshold | 🟡 **YELLOW** — needs review |
+
+---
 
 ## Project Structure
 
 ```
 .
-├── main.py                  # Entry point
-├── clear_sheet.py           # Wipe all rows + colors from the sheet
-├── count_backlog.py         # Count grants in the DB backlog
-├── fix_columns.py           # One-time column layout migration utility
+├── setup_wizard.py      # One-time setup: describe your org → AI builds screening config
+├── update_config.py     # Update specific config sections without re-running wizard
+├── main.py              # Run the screening pipeline
+├── clear_sheet.py       # Clear all rows + formatting from Google Sheet
+├── count_backlog.py     # Check how many grants are in the DB backlog
+├── fix_columns.py       # One-time utility: fix sheet column layout after schema changes
+├── .env.example         # Template — copy to .env and fill in your values
 ├── requirements.txt
-├── .env.example             # Copy to .env and fill in your values
-├── credentials.json.example # See Google Sheets setup below
 └── src/
-    ├── gemini_client.py     # Gemini + SerpAPI screening logic
-    ├── serp_searcher.py     # SerpAPI priority source searches
-    ├── sheets_writer.py     # Google Sheets writer (live, colored, hyperlinked)
-    ├── db_connector.py      # MySQL connector
-    └── models.py            # Grant / ScreeningResult data models
+    ├── gemini_client.py    # Core: SerpAPI + Gemini screening logic + prompt builder
+    ├── serp_searcher.py    # SerpAPI multi-source search (ProPublica, Granted, Candid, CauseIQ)
+    ├── sheets_writer.py    # Google Sheets writer (live rows, colors, rich text hyperlinks)
+    ├── db_connector.py     # MySQL/CRM connector
+    └── models.py           # Grant / ScreeningResult data models
 ```
+
+---
+
+## Prerequisites
+
+- Python 3.10+
+- A MySQL-compatible CRM or database with grant opportunity records
+- API keys for: Gemini, SerpAPI
+- A Google Cloud project with Sheets API enabled (for export)
+
+---
 
 ## Setup
 
-### 1. Install dependencies
+### 1. Clone & Install
+
 ```bash
+git clone https://github.com/Tans37/AI-Agent-Grant-Screener-for-Non-Profits.git
+cd AI-Agent-Grant-Screener-for-Non-Profits
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment
+### 2. Configure Environment
+
 ```bash
 cp .env.example .env
-# Fill in all values in .env
 ```
 
-### 3. Google Sheets (Service Account)
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a project → Enable **Google Sheets API** and **Google Drive API**
-3. Create a **Service Account** → download the JSON key as `credentials.json`
-4. Share your Google Sheet with the service account email (Editor access)
-5. Copy the Sheet ID from the URL into `.env` as `GOOGLE_SHEET_ID`
-
-### 4. Run
-```bash
-python main.py        # Screen grants and write to Sheets
-python clear_sheet.py # Clear all rows and colors from the sheet
-python count_backlog.py  # Check how many grants are in the DB backlog
-```
-
-## API Keys Required
-
-| Service | Where to get it |
-|---|---|
-| Gemini | [Google AI Studio](https://aistudio.google.com/app/apikey) |
-| SerpAPI | [serpapi.com](https://serpapi.com/) |
-| Google Sheets | Service Account JSON via Google Cloud Console |
-
-## Configuration via .env
-
-All org-specific settings are in `.env` — no org details are hardcoded:
+Edit `.env` and fill in all values:
 
 ```env
-ORG_NAME=Your Nonprofit Name
-ORG_MISSION=providing STEM education to underserved youth
-ORG_STATE=NJ
-ORG_TARGET_CITIES=Newark, Camden, Jersey City
+# Database
+MYSQL_HOST=your-db-host.example.com
+MYSQL_USER=your_db_user
+MYSQL_PASSWORD=your_db_password
+MYSQL_DB=your_database_name
+MYSQL_PORT=3306
+
+# DB table and stage filter (customize for your CRM schema)
 DB_TABLE=YourSchema.Grant_Opportunities
 DB_STAGE_FILTER=LOI Backlog
+
+# API Keys
+GEMINI_API_KEY=your_gemini_api_key
+SERPAPI_KEY=your_serpapi_key
+
+# Google Sheets
+GOOGLE_SHEET_ID=your_google_sheet_id
 ```
 
-## Notes
+> **Where to get API keys:**
+> - Gemini: [Google AI Studio](https://aistudio.google.com/app/apikey)
+> - SerpAPI: [serpapi.com](https://serpapi.com/)
 
-- `credentials.json` and `.env` are excluded from git via `.gitignore` — never commit them
-- The pipeline skips grants already present in the Google Sheet (by foundation name)
-- Temperature is set to 0 for deterministic, consistent classifications
+### 3. Set Up Google Sheets (Service Account)
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a project → Enable **Google Sheets API** and **Google Drive API**
+3. Go to **IAM & Admin → Service Accounts** → Create a service account
+4. Create and download a JSON key → save it as `credentials.json` in the project root
+5. Open your Google Sheet → click **Share** → add the service account email as **Editor**
+6. Copy the Sheet ID from the URL into `.env`:
+   ```
+   https://docs.google.com/spreadsheets/d/<SHEET_ID>/edit
+   ```
+
+### 4. Run the Setup Wizard (first time)
+
+```bash
+python setup_wizard.py
+```
+
+The wizard asks 4 sections of questions in plain English:
+1. **Your organization** — name, mission, state, target cities
+2. **Grant requirements** — focus area, size range, who you serve, equity focus
+3. **Red flags** — what should instantly disqualify a grant
+4. **Green flags** — what makes a grant a great fit
+
+Gemini converts your answers into a structured screening config and saves it to `screener_config.json`.
+
+**Example interaction:**
+```
+── 1 / 4  —  Your Organization ──
+What is your organization's name?
+> Education First NJ
+
+What does your org do?
+> providing after-school STEM programs to underserved middle schoolers in Newark
+
+── 3 / 4  —  Red Flags ──
+What would immediately rule out a grant?
+> only funds colleges, not NJ, health or environment focus only, inactive 2+ years
+
+── 4 / 4  —  Green Flags ──
+What makes a grant a great fit?
+> mentions STEM or coding, has funded Newark/Camden before, targets K-12, simple application
+
+Generating your screening configuration with AI...
+✓ Configuration saved to screener_config.json
+```
+
+---
+
+## Running the Pipeline
+
+```bash
+python main.py
+```
+
+Output:
+```
+Initializing Grants Screening Pipeline...
+Fetching grants from backlog...
+[Sheets] Connected. Results will be written live to Google Sheets.
+[Sheets] Skipping 5 already-processed grant(s).
+
+Screening 10 grants...
+
+[1/10] Processing: McMullen Family Foundation...
+  [SerpAPI] Searching priority sources...
+  [ProPublica] 1 relevant result
+  [Granted] 1 relevant result
+  [Candid] 1 relevant result
+  [CauseIQ] 1 relevant result
+  -> GREEN (conf: 0.9)
+  -> Written to Sheets ✓
+
+[2/10] Processing: Diaco Family Foundation Inc...
+  ...
+  -> YELLOW (conf: 1.0)
+  -> Written to Sheets ✓
+```
+
+Results appear in your Google Sheet instantly as each grant is processed.
+
+---
+
+## Google Sheet Output
+
+| Column | Description |
+|---|---|
+| Foundation | Foundation name |
+| Classification | GREEN / YELLOW / RED |
+| Confidence | 0.0–1.0 confidence score |
+| Rationale | Plain-English explanation (flags summary removed, just context) |
+| Source 1–5 | Clickable hyperlinks to research pages |
+
+Rows are color-coded:
+- 🟢 Light green background → GREEN
+- 🟡 Light yellow background → YELLOW
+- 🔴 Light red background → RED
+
+---
+
+## Updating Your Configuration
+
+### View current config
+```bash
+python update_config.py --show
+```
+
+### Update specific sections
+```bash
+python update_config.py --org          # Change org name, mission, state, cities
+python update_config.py --rules        # Re-generate red/green flags (freeform → AI)
+python update_config.py --size         # Change min/max grant size
+python update_config.py --threshold    # Change how many green flags = GREEN (default: 4)
+python update_config.py --full         # Re-run the entire setup wizard
+```
+
+### Example: updating rules
+```bash
+python update_config.py --rules
+
+── Update Screening Rules ──
+What should DISQUALIFY a grant?
+> only funds higher education, outside northeast, arts/environment only
+
+What should make a grant a GREAT FIT?
+> STEM or technology focus, targets youth 12-18, equity/low-income focus, NJ or NYC based
+
+AI updating your rules...
+Config saved to screener_config.json
+```
+
+---
+
+## Utility Scripts
+
+### Check how many grants are in your backlog
+```bash
+python count_backlog.py
+```
+Output:
+```
+Total rows in Grant_Opportunities: 269
+
+Stage breakdown:
+  LOI Backlog                              46  <-- backlog
+  Closed Won                               134
+  ...
+```
+
+### Clear the Google Sheet
+```bash
+python clear_sheet.py
+```
+Wipes all rows **and** background colors. The header will be re-written on the next `main.py` run.
+
+### Fix column layout (after schema changes)
+```bash
+python fix_columns.py
+```
+One-time utility if you change the column structure and existing rows are misaligned.
+
+---
+
+## Configuration Files
+
+| File | Description | In Git? |
+|---|---|---|
+| `.env` | API keys, DB credentials | ❌ Excluded |
+| `credentials.json` | Google service account key | ❌ Excluded |
+| `screener_config.json` | Your screening rules (generated by wizard) | ❌ Excluded |
+| `.env.example` | Template with all required keys | ✅ Included |
+
+> **Never commit `.env`, `credentials.json`, or `screener_config.json` to git.**
+
+---
+
+## How the AI Makes Decisions
+
+The pipeline uses **meta-prompting**: the setup wizard uses Gemini to *build the prompt* that Gemini will later use for screening. This means:
+
+1. You describe your needs in plain English
+2. Gemini converts your description into structured R-flags and G-flags
+3. For each grant, Gemini walks through every flag explicitly before classifying
+4. `temperature=0` ensures consistent, deterministic results across runs
+
+The rationale in the sheet shows the exact green flag count (e.g., `"Green flags: 5/8 (G1✓ G3✓ G5✓ G6✓ G8✓)"`), so you can always see exactly why a grant was classified the way it was.
+
+---
+
+## Roadmap / Possible Extensions
+
+- [ ] Email digest of new GREEN grants
+- [ ] Slack/Teams notification on new GREEN
+- [ ] Web UI for setup wizard (instead of CLI)
+- [ ] Support for Airtable / Google Sheets as data source (instead of MySQL)
+- [ ] Scheduled weekly runs via cron / GitHub Actions
+
+---
+
+## License
+
+MIT License — free to use, modify, and distribute.
