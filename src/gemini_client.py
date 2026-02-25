@@ -6,26 +6,143 @@ from .models import Grant, Classification, ScreeningResult
 from .serp_searcher import search_foundation
 
 
+CONFIG_FILE = "screener_config.json"
+
+
 class GeminiClient:
     def __init__(self):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
 
-        self.client = genai.Client(api_key=api_key)
+        self.client     = genai.Client(api_key=api_key)
         self.model_name = "gemini-3-flash-preview"
+        self.cfg        = self._load_config()
+
+    # ── Config loading ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _load_config() -> dict:
+        """Load screener_config.json if present; fall back to .env values."""
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        # Legacy fallback — .env-based config
+        return {
+            "org": {
+                "name":          os.getenv("ORG_NAME", "Our Nonprofit"),
+                "mission":       os.getenv("ORG_MISSION", "providing STEM education to underserved youth"),
+                "state":         os.getenv("ORG_STATE", "NJ"),
+                "target_cities": os.getenv("ORG_TARGET_CITIES", "local cities"),
+            },
+            "grant_size":      {"min": 0, "max": 0},
+            "green_threshold": 4,
+            "red_flags": [
+                'R1a. Status explicitly says "not accepting applications" or "permanently closed" → Hard RED.',
+                'R1b. Status says "invitation only" → Soft flag.',
+                "R2.  Only funds a state that is not " + os.getenv("ORG_STATE", "NJ"),
+                "R3.  Zero " + os.getenv("ORG_STATE", "NJ") + " grantees found",
+                "R4.  Only funds colleges/hospitals/adults — no K-12 or youth",
+                "R5.  Mission contradicts actual grant focus",
+                "R6.  Only Environment, Animals, or Health — no education",
+                "R7.  Max grant < $2,500 or min grant > $100,000",
+                "R8.  Last grant awarded more than 2 years ago",
+            ],
+            "green_flags": [
+                "G1.  Mission mentions STEM, coding, robotics, or girls in STEM",
+                "G2.  Past grantees include STEM programs or coding orgs",
+                "G3.  Based in or funds " + os.getenv("ORG_STATE", "NJ"),
+                "G4.  Past grants in " + os.getenv("ORG_TARGET_CITIES", "local cities"),
+                "G5.  Age group: middle school, grades 6-8, youth, or K-12",
+                "G6.  Equity: underserved, low-income, or Title I",
+                "G7.  Typical grant $5,000–$50,000",
+                "G8.  Grants awarded in the last 12 months",
+            ],
+            "custom_context": "",
+        }
+
+    def _build_prompt(self, grant: Grant, serp_section: str) -> str:
+        """Build the chain-of-thought screening prompt from loaded config."""
+        cfg  = self.cfg
+        org  = cfg["org"]
+        size = cfg["grant_size"]
+        threshold = cfg.get("green_threshold", 4)
+        custom    = cfg.get("custom_context", "")
+
+        red_flags_text   = "\n        ".join(cfg["red_flags"])
+        green_flags_text = "\n        ".join(cfg["green_flags"])
+        n_green = len(cfg["green_flags"])
+
+        size_rule = (
+            f"R-size. Grant size outside ${size['min']:,}–${size['max']:,}"
+            if size["min"] or size["max"] else ""
+        )
+
+        return f"""
+        You are an expert Grant Screener for {org['name']}, a nonprofit {org['mission']}.
+        {('Additional context: ' + custom) if custom else ''}
+
+        ══════════════════════════════════════════
+        GRANT TO SCREEN
+        ══════════════════════════════════════════
+        Foundation : {grant.foundation_name}
+        Org Name   : {grant.name}
+        Website    : {grant.website if grant.website else 'N/A'}
+        Amount     : {grant.amount}
+
+        {serp_section}
+
+        ══════════════════════════════════════════
+        STEP 1 — CHECK RED FLAGS
+        ══════════════════════════════════════════
+        Go through each flag. Mark YES if found, NO if not:
+        {red_flags_text}
+        {size_rule}
+
+        Rules:
+        → R1a triggered → RED (hard, no workaround)
+        → R1b triggered (invite-only) + any green flags → YELLOW (Inquiry Required)
+        → R1b triggered + zero green flags → RED
+        → Any other red flag → RED
+
+        ══════════════════════════════════════════
+        STEP 2 — COUNT GREEN FLAGS (if no hard red flags)
+        ══════════════════════════════════════════
+        Evaluate with YES / NO / UNCLEAR and cite evidence:
+        {green_flags_text}
+
+        Count YES only. UNCLEAR = NO.
+
+        ══════════════════════════════════════════
+        STEP 3 — CLASSIFY
+        ══════════════════════════════════════════
+        Decision rule (strict):
+        • RED    → any hard red flag (R1a or R2+)
+        • YELLOW → R1b (invite-only) + green >= 1
+                   OR 0 red flags AND green_count < {threshold}
+        • GREEN  → 0 red flags AND green_count >= {threshold}
+
+        Rationale must include:
+        - Which R-flags triggered (or "None")
+        - Green flag count: "Green flags: X/{n_green} (G1✓ G2✓...)"
+        - One plain-English sentence of context
+
+        ══════════════════════════════════════════
+        OUTPUT — ONLY this JSON:
+        ══════════════════════════════════════════
+        {{
+            "classification": "RED" | "YELLOW" | "GREEN",
+            "rationale": "Red flags: <list or None>. Green flags: <X>/{n_green} (<which>). <sentence>",
+            "confidence": 0.0 to 1.0,
+            "next_application_date": "YYYY-MM-DD" or null
+        }}
+        """
 
     def screen_grant(self, grant: Grant) -> ScreeningResult:
         """
         Screen a grant using SerpAPI + Gemini with Google Search grounding.
-        Org context is read from .env (ORG_NAME, ORG_MISSION, ORG_STATE, ORG_TARGET_CITIES).
+        Prompt is built dynamically from screener_config.json (or .env fallback).
         """
-        # Org context — configure in .env
-        org_name     = os.getenv("ORG_NAME", "Our Nonprofit")
-        org_mission  = os.getenv("ORG_MISSION", "providing STEM education to underserved youth")
-        org_state    = os.getenv("ORG_STATE", "NJ")
-        org_cities   = os.getenv("ORG_TARGET_CITIES", "local cities")
-
         # ── Step 1: SerpAPI targeted search ─────────────────────────────────
         serp_context = ""
         serp_sources = []
@@ -61,77 +178,7 @@ class GeminiClient:
             else "No priority-source results found. Use your Google Search tool to research."
         )
 
-        prompt = f"""
-        You are an expert Grant Screener for {org_name}, a nonprofit {org_mission}.
-
-        ══════════════════════════════════════════
-        GRANT TO SCREEN
-        ══════════════════════════════════════════
-        Foundation : {grant.foundation_name}
-        Org Name   : {grant.name}
-        Website    : {grant.website if grant.website else "N/A"}
-        Amount     : {grant.amount}
-
-        {serp_section}
-
-        ══════════════════════════════════════════
-        STEP 1 — CHECK RED FLAGS (stop immediately if any are true)
-        ══════════════════════════════════════════
-        Go through each flag. Mark YES if found, NO if not:
-        R1a. Status explicitly says "not accepting applications" or "permanently closed"
-             → Hard RED — no workaround.
-        R1b. Status says "invitation only" or "by invitation to preselected organizations only"
-             → Soft flag — see STEP 3 for how to handle.
-        R2.  Explicit geography block — only funds a specific state that is NOT {org_state}
-        R3.  Zero {org_state} grantees found anywhere in search results
-        R4.  Focus is ONLY colleges/grad schools/hospitals/adults — NO K-12 or youth
-        R5.  Stated mission (e.g. Education) contradicts actual grants (e.g. Religious/Health)
-        R6.  Cause area is Environment, Animals, or Health ONLY — zero education focus
-        R7.  Max grant < $2,500 OR minimum grant > $100,000
-        R8.  Last grant awarded more than 2 years ago
-
-        ══════════════════════════════════════════
-        STEP 2 — COUNT GREEN FLAGS (only if no hard red flags)
-        ══════════════════════════════════════════
-        Evaluate each green flag with a YES / NO / UNCLEAR and cite your evidence:
-        G1. Mission mentions STEM, technology education, coding, robotics, or girls in STEM
-        G2. Past grantees (if any) include STEM programs, Girls Who Code, robotics clubs, or coding orgs
-        G3. Foundation is based in {org_state} OR explicitly states it funds {org_state} nonprofits
-        G4. Past grants awarded in {org_cities}, or any {org_state} location
-        G5. Age group: schools, middle school, grades 6-8, youth, or K-12
-        G6. Equity focus: underserved, low-income, Title I, or marginalized communities
-        G7. Typical grant size is $5,000 - $50,000
-        G8. Grants awarded within the last 12 months (active grantmaker)
-
-        Count YES answers only. UNCLEAR = NO.
-
-        ══════════════════════════════════════════
-        STEP 3 — CLASSIFY
-        ══════════════════════════════════════════
-        Decision rule (strict — do not deviate):
-        • RED    → R1a triggered (permanently closed / not accepting)
-                   OR any of R2–R8 triggered
-                   OR R1b triggered AND green_count = 0 (invite-only but zero alignment)
-        • YELLOW → R1b triggered (invitation-only/preselected) AND green_count >= 1
-                   → rationale must say: "Inquiry Required — invitation-only, {org_name} should reach out."
-                   OR 0 red flags AND green_count <= 3
-        • GREEN  → 0 red flags AND green_count >= 4
-
-        Rationale must include:
-        - Which R-flags were found (or "None")
-        - Exact green flag count: "Green flags: X/8 (G1✓ G3✓ G5✓ ...)"
-        - One sentence of context
-
-        ══════════════════════════════════════════
-        OUTPUT — respond with ONLY this JSON:
-        ══════════════════════════════════════════
-        {{
-            "classification": "RED" | "YELLOW" | "GREEN",
-            "rationale": "Red flags: <list or None>. Green flags: <X>/10 (<which ones>). <context sentence>",
-            "confidence": 0.0 to 1.0,
-            "next_application_date": "YYYY-MM-DD" or null
-        }}
-        """
+        prompt = self._build_prompt(grant, serp_section)
 
         try:
             response = self.client.models.generate_content(
