@@ -158,34 +158,38 @@ GOOGLE_SHEET_ID=your_google_sheet_id
 python setup_wizard.py
 ```
 
-The wizard asks 4 sections of questions in plain English:
+The wizard asks **5 sections** in plain conversational English — no technical knowledge needed:
+
 1. **Your organization** — name, mission, state, target cities
 2. **Grant requirements** — focus area, size range, who you serve, equity focus
-3. **Red flags** — what should instantly disqualify a grant
-4. **Green flags** — what makes a grant a great fit
+3. **Red flags** — what should instantly disqualify a grant *(describe naturally — AI structures it)*
+4. **Green flags** — what makes a grant a great fit *(describe naturally — AI structures it)*
+5. **Classification rules** — what should be RED vs YELLOW vs GREEN for your org, and how many green flags = GREEN
 
-Gemini converts your answers into a structured screening config and saves it to `screener_config.json`.
+> **You never write R1, R2, G1, G2 etc.** — Gemini converts your plain-English descriptions into structured chain-of-thought flags automatically.
 
 **Example interaction:**
 ```
-── 1 / 4  —  Your Organization ──
-What is your organization's name?
-> Education First NJ
+── 3 / 5  —  Red Flags ──
+What would immediately rule out a grant for you?
+> only funds universities, doesn't fund NJ, arts or environment only, inactive 3+ years
 
-What does your org do?
-> providing after-school STEM programs to underserved middle schoolers in Newark
-
-── 3 / 4  —  Red Flags ──
-What would immediately rule out a grant?
-> only funds colleges, not NJ, health or environment focus only, inactive 2+ years
-
-── 4 / 4  —  Green Flags ──
+── 4 / 5  —  Green Flags ──
 What makes a grant a great fit?
-> mentions STEM or coding, has funded Newark/Camden before, targets K-12, simple application
+> STEM or coding focus, has funded Newark or Camden before, targets K-12, equity/low-income
+
+── 5 / 5  —  Classification Rules ──
+What should be YELLOW instead of RED?
+> invite-only foundations that still align with our mission — worth reaching out
+
+How many green flags = GREEN? [4]
+> 4
 
 Generating your screening configuration with AI...
 ✓ Configuration saved to screener_config.json
 ```
+
+Everything saved to `screener_config.json` — `main.py` reads it automatically on every run.
 
 ---
 
@@ -249,11 +253,12 @@ python update_config.py --show
 
 ### Update specific sections
 ```bash
-python update_config.py --org          # Change org name, mission, state, cities
-python update_config.py --rules        # Re-generate red/green flags (freeform → AI)
-python update_config.py --size         # Change min/max grant size
-python update_config.py --threshold    # Change how many green flags = GREEN (default: 4)
-python update_config.py --full         # Re-run the entire setup wizard
+python update_config.py --org              # Change org name, mission, state, cities
+python update_config.py --rules            # Re-generate red/green flags (freeform → AI)
+python update_config.py --classification   # Update RED/YELLOW/GREEN decision rules
+python update_config.py --size             # Change min/max grant size
+python update_config.py --threshold        # Change how many green flags = GREEN (default: 4)
+python update_config.py --full             # Re-run the entire setup wizard
 ```
 
 ### Example: updating rules
