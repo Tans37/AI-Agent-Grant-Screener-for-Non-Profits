@@ -22,6 +22,10 @@ Gemini 3 Flash (+ Google Search grounding)
   → RED / YELLOW / GREEN classification
        ↓
 Google Sheets (live, color-coded, clickable links)
+
+<img width="1919" height="443" alt="image" src="https://github.com/user-attachments/assets/f37b1251-a779-43ec-bba7-60d571670a1e" />
+Output(In Google Sheets) 
+
 ```
 
 ---
