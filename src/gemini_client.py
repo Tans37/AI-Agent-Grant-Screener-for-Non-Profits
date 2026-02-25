@@ -82,8 +82,8 @@ class GeminiClient:
              → Hard RED — no workaround.
         R1b. Status says "invitation only" or "by invitation to preselected organizations only"
              → Soft flag — see STEP 3 for how to handle.
-        R2.  Explicit geography block — only funds a specific state that is NOT NJ
-        R3.  Zero NJ grantees found anywhere in search results
+        R2.  Explicit geography block — only funds a specific state that is NOT {org_state}
+        R3.  Zero {org_state} grantees found anywhere in search results
         R4.  Focus is ONLY colleges/grad schools/hospitals/adults — NO K-12 or youth
         R5.  Stated mission (e.g. Education) contradicts actual grants (e.g. Religious/Health)
         R6.  Cause area is Environment, Animals, or Health ONLY — zero education focus
@@ -96,8 +96,8 @@ class GeminiClient:
         Evaluate each green flag with a YES / NO / UNCLEAR and cite your evidence:
         G1. Mission mentions STEM, technology education, coding, robotics, or girls in STEM
         G2. Past grantees (if any) include STEM programs, Girls Who Code, robotics clubs, or coding orgs
-        G3. Foundation is based in NJ OR explicitly states it funds NJ nonprofits
-        G4. Past grants awarded in Newark, Camden, Jersey City, Elizabeth, or any NJ location
+        G3. Foundation is based in {org_state} OR explicitly states it funds {org_state} nonprofits
+        G4. Past grants awarded in {org_cities}, or any {org_state} location
         G5. Age group: schools, middle school, grades 6-8, youth, or K-12
         G6. Equity focus: underserved, low-income, Title I, or marginalized communities
         G7. Typical grant size is $5,000 - $50,000
@@ -113,7 +113,7 @@ class GeminiClient:
                    OR any of R2–R8 triggered
                    OR R1b triggered AND green_count = 0 (invite-only but zero alignment)
         • YELLOW → R1b triggered (invitation-only/preselected) AND green_count >= 1
-                   → rationale must say: "Inquiry Required — invitation-only, JerseySTEM should reach out."
+                   → rationale must say: "Inquiry Required — invitation-only, {org_name} should reach out."
                    OR 0 red flags AND green_count <= 3
         • GREEN  → 0 red flags AND green_count >= 4
 
